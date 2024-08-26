@@ -1,0 +1,233 @@
+import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class Main {
+    public static void main(String[] args) {
+        if (args.length == 0) { // Проверяем, что аргументы переданы
+            System.out.println("Ошибка: Отсутствуют аргументы.");
+            return; //  Завершаем программу, если нет аргументов
+        }
+        String dir = "."; // Директория для записи файлов
+        String filePrefix = ""; // Префикс для имен файлов
+        boolean append = false; // Режим добавления
+        boolean shortStats = false; // Краткая статистика
+        boolean fullStats = false;// Полная статистика
+
+
+        List<String> inputFiles = new ArrayList<>(); // Список для хранения имен входных файлов
+        int i = 0;
+        // Обработка аргументов
+        while (i < args.length) {
+            String arg = args[i];
+            if (arg.startsWith("-")) {
+                if (arg.startsWith("-o")) {
+                    dir = arg.length() > 2 ? arg.substring(2) : args[++i]; // Устанавливаем директорию для вывода
+                } else if (arg.startsWith("-p")) {
+                    if (i + 1 < args.length) {
+                        filePrefix = args[i + 1]; // Устанавливаем префикс для файлов
+                        i++; // Пропускаем следующее значение, так как оно уже обработано как префикс
+                    } else {
+                        System.out.println("Ошибка: Префикс не указан после -p.");
+                        return;
+                    }
+                } else if (arg.equals("-a")) {
+                    append = true; // Устанавливаем режим добавления
+                } else if (arg.equals("-s")) {
+                    shortStats = true; // Устанавливаем режим краткой статистики
+                } else if (arg.equals("-f")) {
+                    fullStats = true; // Устанавливаем режим полной статистики
+                }
+            } else {
+                // Все оставшиеся аргументы считаем входными файлами
+                inputFiles.add(arg);
+            }
+            i++;
+        }
+
+        // Инициализируем списки для хранения данных
+        List<Integer> integers = new ArrayList<>();
+        List<Double> floats = new ArrayList<>();
+        List<String> strings = new ArrayList<>();
+
+        // Инициализация переменных для статистики
+        StatisticsData intStats = new StatisticsData(Integer.MAX_VALUE, Integer.MIN_VALUE, 0, 0);
+        StatisticsData floatStats = new StatisticsData(Double.MAX_VALUE, Double.MIN_VALUE, 0, 0);
+        StringStatisticsData stringStats = new StringStatisticsData(Integer.MAX_VALUE, Integer.MIN_VALUE, 0);
+
+        // Обработка каждого входного файла
+        for (String fileName : inputFiles) {
+            readFile(fileName, integers, floats, strings, intStats, floatStats, stringStats);
+        }
+
+
+        writeResults(dir, filePrefix, append, integers, floats, strings);// Запись результатов
+
+        if (shortStats) {
+            printShortStats(intStats.count, floatStats.count, stringStats.count); // Вывод краткой статистики
+        }
+        if (fullStats) {
+            printFullStats(intStats.min, intStats.max, intStats.sum, intStats.count, "Integers"); // Вывод полной статистики для целых чисел
+            printFullStats(floatStats.min, floatStats.max, floatStats.sum, floatStats.count, "Floats"); // Вывод полной статистики для вещественных чисел
+            printStringFullStats(stringStats.minLength, stringStats.maxLength, stringStats.count); // Вывод полной статистики для строк
+        }
+
+    }
+
+    // Метод для обработки одного файла
+    private static void readFile(String fileName, List<Integer> integers, List<Double> floats, List<String> strings,
+                                 StatisticsData intStats, StatisticsData floatStats, StringStatisticsData stringStats) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(fileName))) {
+            String line;
+            while ((line = reader.readLine()) != null) { // Чтение файла построчно
+                line = line.trim(); // Удаление пробелов в начале и конце строки
+                try {
+                    if (line.isEmpty()) continue; // Пропуск пустых строк
+                    if (line.matches("-?\\d+")) { // Проверка на целое число
+                        int value = Integer.parseInt(line);
+                        integers.add(value);
+                        updateIntStatistics(value, intStats); // Обновление статистики
+                    } else if (line.matches("[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?")) { // Проверка на вещественное число
+                        double value = Double.parseDouble(line);
+                        floats.add(value);
+                        updateFloatStatistics(value, floatStats); // Обновление статистики
+                    } else { // Обработка строк
+                        strings.add(line);
+                        updateStringStatistics(line, stringStats); // Обновление статистики
+                    }
+                } catch (NumberFormatException e) { // Игнорируем строки, которые не являются числами
+
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Ошибка чтения строк " + fileName + ": " + e.getMessage()); // Обработка ошибок чтения файла
+        }
+    }
+
+
+    private static void writeResults(String dir, String prefix, boolean append, List<Integer> integers,
+                                     List<Double> floats, List<String> strings) {
+        File directory = new File(dir);
+
+
+        // Создание директории, если не существует
+        if (!directory.exists()) {
+            boolean created = directory.mkdirs(); // Создаем директорию, если не существует
+            if (created) {
+                System.out.println("Директория успешно создана: " + directory.getAbsolutePath());
+            } else {
+                System.err.println("Ошибка: Не удалось создать директорию " + directory.getAbsolutePath());
+                return;
+            }
+        } else {
+            System.out.println("Директория уже существует: " + directory.getAbsolutePath());
+        }
+        if (!integers.isEmpty()) {
+            writeToFile(new File(directory, prefix + "integers.txt"), integers, append);
+        }
+        if (!floats.isEmpty()) {
+            writeToFile(new File(directory, prefix + "floats.txt"), floats, append);
+        }
+        if (!strings.isEmpty()) {
+            writeToFile(new File(directory, prefix + "strings.txt"), strings, append);
+        }
+    }
+
+    // Метод для записи строк в файлы
+    private static <T> void writeToFile(File file, List<T> data, boolean append) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(file, append))) {
+            for (T item : data) {
+                writer.write(item.toString()); // Запись элемента в файл
+                writer.newLine(); // Перевод строки
+            }
+        } catch (IOException e) {
+            System.err.println("Ошибка записи файла " + file.getPath() + ": " + e.getMessage()); // Обработка ошибок записи в файл
+        }
+    }
+
+    // Обновление статистики целых чисел
+    private static void updateIntStatistics(int value, StatisticsData stats) {
+        stats.count++;
+        if (value < stats.min)
+            stats.min = value;
+        if (value > stats.max)
+            stats.max = value;
+        stats.sum += value;
+    }
+
+    // Обновление статистики вещественных чисел
+    private static void updateFloatStatistics(double value, StatisticsData stats) {
+        stats.count++;
+        if (value < stats.min)
+            stats.min = value;
+        if (value > stats.max)
+            stats.max = value;
+        stats.sum += value;
+    }
+
+    // Обновление статистики строк
+    private static void updateStringStatistics(String value, StringStatisticsData stats) {
+        stats.count++;
+        int length = value.length();
+        if (length < stats.minLength)
+            stats.minLength = length;
+        if (length > stats.maxLength)
+            stats.maxLength = length;
+    }
+
+    // Вывод краткой статистики
+    private static void printShortStats(int intCount, int floatCount, int stringCount) {
+        System.out.println("Short Statistics:");
+        System.out.println("  Integers Count: " + intCount);
+        System.out.println("  Floats Count: " + floatCount);
+        System.out.println("  Strings Count: " + stringCount);
+    }
+
+    // Вывод полной статистики для чисел
+    private static void printFullStats(double min, double max, double sum, int count, String type) {
+        System.out.println(type + " Full Statistics:");
+        System.out.println("  Count: " + count);
+        System.out.println("  Min: " + min);
+        System.out.println("  Max: " + max);
+        System.out.println("  Sum: " + sum);
+        if (count > 0) {
+            System.out.println("  Average: " + (sum / count));
+        }
+    }
+
+    // Вывод полной статистики для строк
+    private static void printStringFullStats(int minLength, int maxLength, int count) {
+        System.out.println("Strings Full Statistics:");
+        System.out.println("  Count: " + count);
+        System.out.println("  Shortest String Length: " + minLength);
+        System.out.println("  Longest String Length: " + maxLength);
+    }
+
+    // Классы для хранения статистики
+    static class StatisticsData {
+        double min;
+        double max;
+        double sum;
+        int count;
+
+        StatisticsData(double min, double max, double sum, int count) {
+            this.min = min;
+            this.max = max;
+            this.sum = sum;
+            this.count = count;
+        }
+    }
+
+    static class StringStatisticsData {
+        int minLength;
+        int maxLength;
+        int count;
+
+        StringStatisticsData(int minLength, int maxLength, int count) {
+            this.minLength = minLength;
+            this.maxLength = maxLength;
+            this.count = count;
+        }
+    }
+
+}
